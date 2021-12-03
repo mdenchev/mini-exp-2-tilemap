@@ -1,0 +1,18 @@
+[package]
+name = "mini-exp-2-tilemap"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = "0.5"
+bevy_ecs_tilemap = { git = "https://github.com/StarArawn/bevy_ecs_tilemap" }
+tiled = "0.9"
+bevy_rapier2d = "0.11.0"
+env_logger = "0.9"
+log = "0.4"
+anyhow = { version = "1.0" }
+
+[patch.crates-io]
+tiled = { path = "../rs-tiled" }
