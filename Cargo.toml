@@ -9,10 +9,11 @@ edition = "2021"
 bevy = "0.5"
 bevy_ecs_tilemap = { git = "https://github.com/StarArawn/bevy_ecs_tilemap" }
 tiled = "0.9"
-bevy_rapier2d = "0.11.0"
+bevy_rapier2d = { version = "0.11", features = [ "simd-stable", "render" ] }
 env_logger = "0.9"
 log = "0.4"
 anyhow = { version = "1.0" }
+# bevy_spicy_aseprite = { git = "https://github.com/mdenchev/bevy_spicy_aseprite" }
 
 [patch.crates-io]
 tiled = { path = "../rs-tiled" }

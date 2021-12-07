@@ -1,4 +1,7 @@
 use bevy_ecs_tilemap::prelude::*;
+use bevy_rapier2d::physics::{ColliderBundle, ColliderPositionSync};
+use bevy_rapier2d::prelude::ColliderShape;
+use bevy_rapier2d::render::ColliderDebugRender;
 use std::path::Path;
 use std::{collections::HashMap, io::BufReader};
 
@@ -9,13 +12,18 @@ use bevy::{
 };
 
 #[derive(Default)]
+pub struct MapIdToTiledMap(HashMap<u16, Handle<TiledMap>>);
+
+#[derive(Default)]
 pub struct TiledMapPlugin;
 
 impl Plugin for TiledMapPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_asset::<TiledMap>()
             .add_asset_loader(TiledLoader)
-            .add_system(process_loaded_tile_maps.system());
+            .init_resource::<MapIdToTiledMap>()
+            .add_system(process_loaded_tile_maps.system().label("load"))
+            .add_system(process_collisions_for_loaded_tile_maps.system().after("load"));
     }
 }
 
@@ -79,6 +87,7 @@ impl AssetLoader for TiledLoader {
 
 pub fn process_loaded_tile_maps(
     mut commands: Commands,
+    mut map_id_to_tiled_map: ResMut<MapIdToTiledMap>,
     mut map_events: EventReader<AssetEvent<TiledMap>>,
     maps: Res<Assets<TiledMap>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -122,6 +131,9 @@ pub fn process_loaded_tile_maps(
             if map_handle != changed_map {
                 continue;
             }
+            map_id_to_tiled_map
+                .0
+                .insert(map.id, map_handle.clone_weak());
             if let Some(tiled_map) = maps.get(map_handle) {
                 // Despawn all tiles/chunks/layers.
                 for (layer_id, layer_entity) in map.get_layers() {
@@ -151,7 +163,7 @@ pub fn process_loaded_tile_maps(
 
                 for tileset in tiled_map.map.tilesets.iter() {
                     // Once materials have been created/added we need to then create the layers.
-                    for layer in tiled_map.map.layers.iter() {
+                    for layer in tiled_map.map.layers.values() {
                         let tile_width = tileset.tile_width as f32;
                         let tile_height = tileset.tile_height as f32;
 
@@ -172,19 +184,28 @@ pub fn process_loaded_tile_maps(
                                 tileset.images[0].height as f32,
                             ), // TODO: support multiple tileset images?
                         );
-                        map_settings.grid_size = Vec2::new(tiled_map.map.tile_width as f32, tiled_map.map.tile_height as f32);
+                        map_settings.grid_size = Vec2::new(
+                            tiled_map.map.tile_width as f32,
+                            tiled_map.map.tile_height as f32,
+                        );
                         map_settings.set_layer_id(layer.layer_index as u16);
 
                         map_settings.mesh_type = match tiled_map.map.orientation {
                             tiled::map::Orientation::Hexagonal => {
                                 TilemapMeshType::Hexagon(HexType::Row) // TODO: Support hex for real.
                             }
-                            tiled::map::Orientation::Isometric => TilemapMeshType::Isometric(IsoType::Diamond),
-                            tiled::map::Orientation::Staggered => TilemapMeshType::Isometric(IsoType::Staggered),
+                            tiled::map::Orientation::Isometric => {
+                                TilemapMeshType::Isometric(IsoType::Diamond)
+                            }
+                            tiled::map::Orientation::Staggered => {
+                                TilemapMeshType::Isometric(IsoType::Staggered)
+                            }
                             tiled::map::Orientation::Orthogonal => TilemapMeshType::Square,
                         };
 
-                        let material = materials.add(ColorMaterial::texture(tiled_map.tilesets.get(&tileset.first_gid).unwrap().clone()));                
+                        let material = materials.add(ColorMaterial::texture(
+                            tiled_map.tilesets.get(&tileset.first_gid).unwrap().clone(),
+                        ));
                         let layer_entity = LayerBuilder::<TileBundle>::new_batch(
                             &mut commands,
                             map_settings,
@@ -194,30 +215,59 @@ pub fn process_loaded_tile_maps(
                             layer.layer_index as u16,
                             None,
                             move |mut tile_pos| {
-                                if tile_pos.0 >= tiled_map.map.width || tile_pos.1 >= tiled_map.map.height {
+                                if tile_pos.0 >= tiled_map.map.width
+                                    || tile_pos.1 >= tiled_map.map.height
+                                {
                                     return None;
                                 }
-                
-                                if tiled_map.map.orientation == tiled::map::Orientation::Orthogonal {
+
+                                if tiled_map.map.orientation == tiled::map::Orientation::Orthogonal
+                                {
                                     tile_pos.1 = (tiled_map.map.height - 1) as u32 - tile_pos.1;
                                 }
-                
+
                                 let x = tile_pos.0 as usize;
                                 let y = tile_pos.1 as usize;
-                
+
                                 let map_tile = match &layer.tiles {
                                     tiled::layers::LayerData::Finite(tiles) => &tiles[y][x],
                                     _ => panic!("Infinite maps not supported"),
                                 };
-                                
+
                                 if map_tile.gid < tileset.first_gid
-                                || map_tile.gid >= tileset.first_gid + tileset.tilecount.unwrap()
+                                    || map_tile.gid
+                                        >= tileset.first_gid + tileset.tilecount.unwrap()
                                 {
                                     return None;
                                 }
-                
+
                                 let tile_id = map_tile.gid - tileset.first_gid;
-                
+                                if let Some(tile_info) = tileset.tiles.get(&tile_id) {
+                                    if let Some(object_group) = &tile_info.objectgroup {
+                                        for object in object_group.objects.iter() {
+                                            match &object.shape {
+                                                tiled::objects::ObjectShape::Rect {
+                                                    width,
+                                                    height,
+                                                } => {
+                                                    // Add collider
+                                                }
+                                                tiled::objects::ObjectShape::Ellipse {
+                                                    width,
+                                                    height,
+                                                } => todo!(),
+                                                tiled::objects::ObjectShape::Polyline {
+                                                    points,
+                                                } => todo!(),
+                                                tiled::objects::ObjectShape::Polygon { points } => {
+                                                    todo!()
+                                                }
+                                                tiled::objects::ObjectShape::Point(_, _) => todo!(),
+                                            }
+                                        }
+                                    }
+                                }
+
                                 let tile = Tile {
                                     texture_index: tile_id as u16,
                                     flip_x: map_tile.flip_h,
@@ -243,15 +293,98 @@ pub fn process_loaded_tile_maps(
                 }
 
                 // for object_group in tiled_map.map.object_groups.iter() {
-                    // dbg!(object_group);
+                // dbg!(object_group);
                 // }
-// 
+                //
                 // for tileset in tiled_map.map.tilesets.iter() {
-                    // for tile in tileset.tiles.iter() {
-                        // dbg!(tile);
-                        // panic!();
-                    // }
+                // dbg!(tile);
+                // panic!();
                 // }
+                // }
+            }
+        }
+    }
+}
+
+pub fn process_collisions_for_loaded_tile_maps(
+    mut commands: Commands,
+    map_id_to_tiled_map: Res<MapIdToTiledMap>,
+    maps: Res<Assets<TiledMap>>,
+    added_tiles_query: Query<(Entity, &TilePos, &TileParent), Added<Tile>>,
+    chunks_query: Query<(&Chunk, &GlobalTransform)>,
+    layer_query: Query<(&Layer, &GlobalTransform)>,
+) {
+    let count = added_tiles_query.iter().count();
+    if count > 0 {
+        dbg!(count);
+    } else {
+        return
+    }
+
+    for (tile_ent, &tile_pos, tile_parent) in added_tiles_query.iter() {
+        let x = tile_pos.0 as usize;
+        let y = tile_pos.1 as usize;
+        let map_id = tile_parent.map_id;
+        let tiled_map = maps.get(&map_id_to_tiled_map.0[&map_id]).unwrap();
+        let layer_id = tile_parent.layer_id;
+        let chunk_ent = tile_parent.chunk;
+        let (chunk, chunk_transform) = chunks_query.get(chunk_ent).unwrap();
+        let tiled_layer = &tiled_map.map.layers[&(layer_id as u32)];
+        // TODO make work with multiple tilesets
+        let tileset = tiled_map
+            .map
+            .tilesets
+            .get(0)
+            .expect("Expecting one tileset");
+
+        let map_tile = match &tiled_layer.tiles {
+            tiled::layers::LayerData::Finite(tiles) => &tiles[y][x],
+            _ => panic!("Infinite maps not supported"),
+        };
+
+        if map_tile.gid < tileset.first_gid
+            || map_tile.gid >= tileset.first_gid + tileset.tilecount.unwrap()
+        {
+            continue
+        }
+
+        let tiled_height = tiled_map.map.height;
+        let map_height = tiled_height * tiled_map.map.tile_height;
+        let tile_translation = Vec2::new(
+            (tile_pos.0 as f32 + 0.5) * chunk.settings.tile_size.0 - (chunk.position.0 * chunk.settings.chunk_size.0) as f32 + chunk_transform.translation.x,
+            -1.0 * (tile_pos.1 as f32 + 0.5) * chunk.settings.tile_size.1 + map_height as f32,
+        );
+        //dbg!(layer_query.iter().next().unwrap().1);
+        //dbg!(tile_pos);
+
+        //dbg!(tile_pos, map_tile.gid, tileset.first_gid);
+        let tile_id = map_tile.gid - tileset.first_gid;
+        if let Some(tile_info) = tileset.tiles.get(&tile_id) {
+            if let Some(object_group) = &tile_info.objectgroup {
+                for object in object_group.objects.iter() {
+                    match &object.shape {
+                        &tiled::objects::ObjectShape::Rect { width, height } => {
+                            //if tile_pos.0 < 50 && tile_pos.1 < 50 {
+                                //dbg!(tile_id, width, height, tile_translation, 1);
+                                //dbg!(tile_pos);
+                                // Add collider
+                                let collider = ColliderBundle {
+                                    shape: ColliderShape::cuboid(width, height),
+                                    position: tile_translation.into(),
+                                    ..Default::default()
+                                };
+                                commands
+                                    .spawn_bundle(collider)
+                                    .insert(ColliderDebugRender::default())
+                                    .insert(ColliderPositionSync::Discrete);
+                            //}
+                        }
+                        tiled::objects::ObjectShape::Ellipse { width, height } => todo!(),
+                        tiled::objects::ObjectShape::Polyline { points } => todo!(),
+                        tiled::objects::ObjectShape::Polygon { points } => todo!(),
+                        tiled::objects::ObjectShape::Point(_, _) => todo!(),
+                    };
+                }
             }
         }
     }
