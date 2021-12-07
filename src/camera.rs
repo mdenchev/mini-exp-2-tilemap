@@ -52,6 +52,7 @@ pub fn char_input(
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
     rapier_parameters: Res<RapierConfiguration>,
+    windows: Res<Windows>,
     mut player_info: Query<(&Player, &mut RigidBodyVelocity)>,
     mut qs: QuerySet<(
         Query<&mut Transform, With<Player>>,
@@ -90,7 +91,15 @@ pub fn char_input(
     }
 
     for mut cam_transform in qs.q1_mut().iter_mut() {
-        cam_transform.translation = player_translation;
+        let window = windows.get_primary().unwrap();
+        let cam_w = window.width()/4.0;
+        let cam_h = window.height()/4.0;
+        let cam_x  = player_translation.x.max(cam_w as f32).min(700.);
+        let cam_y  = player_translation.y.max(cam_h as f32).min(500.);
+        //dbg!(cam_w, cam_h, player_translation.x, player_translation.y, cam_x, cam_y);
+        //cam_transform.translation = player_translation;
+        cam_transform.translation.x = cam_x;
+        cam_transform.translation.y = cam_y;
     }
 
 }

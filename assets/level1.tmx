@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.5" tiledversion="1.7.2" orientation="orthogonal" renderorder="left-down" width="64" height="48" tilewidth="16" tileheight="16" infinite="0" nextlayerid="6" nextobjectid="2">
- <tileset firstgid="1" source="../../bevy_ecs_tilemap/assets/set2.tsx"/>
+ <tileset firstgid="1" source="set2.tsx"/>
  <layer id="1" name="Tile Layer 1" width="64" height="48">
   <data encoding="csv">
 197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,197,

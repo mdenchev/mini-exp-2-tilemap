@@ -369,7 +369,7 @@ pub fn process_collisions_for_loaded_tile_maps(
                                 //dbg!(tile_pos);
                                 // Add collider
                                 let collider = ColliderBundle {
-                                    shape: ColliderShape::cuboid(width, height),
+                                    shape: ColliderShape::cuboid(width/2.0, height/2.0),
                                     position: tile_translation.into(),
                                     ..Default::default()
                                 };
