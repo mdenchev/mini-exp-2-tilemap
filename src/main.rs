@@ -4,7 +4,7 @@ use bevy::{prelude::*, utils::HashMap};
 use bevy_ecs_tilemap::prelude::*;
 use bevy_rapier2d::{
     physics::{NoUserData, RapierPhysicsPlugin, ColliderBundle, ColliderPositionSync, RigidBodyBundle},
-    render::{RapierRenderPlugin, ColliderDebugRender}, prelude::ColliderShape,
+    render::{RapierRenderPlugin, ColliderDebugRender}, prelude::{ColliderShape, RigidBodyMassPropsFlags},
 };
 //use bevy_spicy_aseprite::{AsepriteBundle, AsepriteAnimation, AsepritePlugin};
 
@@ -53,7 +53,12 @@ fn startup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert_bundle(collider)
         .insert(ColliderDebugRender::with_id(1))
         .insert(ColliderPositionSync::Discrete)
-        .insert_bundle(RigidBodyBundle::default())
+        .insert_bundle(
+            RigidBodyBundle {
+            mass_properties: (RigidBodyMassPropsFlags::ROTATION_LOCKED).into(),
+            ..Default::default()
+        })
+            
         .insert(Player(300.0));
 
     //commands
